@@ -65,7 +65,7 @@ class ArgoversePreprocessor(Preprocessor):
 
     def process(self, dataframe: pd.DataFrame,  seq_id, map_feat=True):
         data = self.read_argo_data(dataframe)
-        data = self.get_obj_feats(data)
+        data = self.get_obj_feats(data)  # NOTE[MD]: this function is huge
 
         data['graph'] = self.get_lane_graph(data)
         data['seq_id'] = seq_id
@@ -81,6 +81,11 @@ class ArgoversePreprocessor(Preprocessor):
 
     @staticmethod
     def read_argo_data(df: pd.DataFrame):
+        """
+        Returns a dict with keys: city, trajs, and steps.
+        The trajs and steps start off with the agent's trajectory and steps, and then the trajectories
+         and steps of other objects follow.
+        """
         city = df["CITY_NAME"].values[0]
 
         """TIMESTAMP,TRACK_ID,OBJECT_TYPE,X,Y,CITY_NAME"""
@@ -95,6 +100,8 @@ class ArgoversePreprocessor(Preprocessor):
 
         steps = [mapping[x] for x in df['TIMESTAMP'].values]
         steps = np.asarray(steps, np.int64)
+        # Because timestamps are not unique in the df, steps looks like this:
+        # array([0, 0, 0, ..., 0, 1, 1, 1, ..., 48, 49, ..., 49])
 
         objs = df.groupby(['TRACK_ID', 'OBJECT_TYPE']).groups
         keys = list(objs.keys())
@@ -120,24 +127,34 @@ class ArgoversePreprocessor(Preprocessor):
         return data
 
     def get_obj_feats(self, data):
-        # get the origin and compute the oritentation of the target agent
+        # get the origin and compute the orientation of the target agent
         orig = data['trajs'][0][self.obs_horizon-1].copy().astype(np.float32)
+        # NOTE[MD]: orig is the first position of the agent
 
-        # comput the rotation matrix
+        # compute the rotation matrix
         if self.normalized:
-            pre, conf = self.am.get_lane_direction(data['trajs'][0][self.obs_horizon-1], data['city'])
+            pre, conf = self.am.get_lane_direction(
+                data['trajs'][0][self.obs_horizon - 1],
+                data['city'],
+            )
+            # pre is a 2D np.array with the vector direction of the lane (not normalized), conf is a confidence score
+            # NOTE[MD]: in self.am.get_lane_firection.__doc__ I read that conf < 0.85 means it's unreliable,
+            #  so I don't get the 0.1 below
             if conf <= 0.1:
-                pre = (orig - data['trajs'][0][self.obs_horizon-4]) / 2.0
-            theta = - np.arctan2(pre[1], pre[0]) + np.pi / 2
+                pre = (orig - data['trajs'][0][self.obs_horizon - 4]) / 2.0  # TODO[MD]: why the hell "/ 2.0" ?
+
+            theta = -np.arctan2(pre[1], pre[0]) + np.pi / 2
             rot = np.asarray([
                 [np.cos(theta), -np.sin(theta)],
-                [np.sin(theta), np.cos(theta)]], np.float32)
+                [np.sin(theta), np.cos(theta)]
+            ], np.float32)
         else:
             # if not normalized, do not rotate.
             theta = None
             rot = np.asarray([
                 [1.0, 0.0],
-                [0.0, 1.0]], np.float32)
+                [0.0, 1.0]
+            ], np.float32)
 
         # get the target candidates and candidate gt
         agt_traj_obs = data['trajs'][0][0: self.obs_horizon].copy().astype(np.float32)
@@ -150,11 +167,14 @@ class ArgoversePreprocessor(Preprocessor):
             ctr_line_candts[i] = np.matmul(rot, (ctr_line_candts[i] - orig.reshape(-1, 2)).T).T
 
         tar_candts = self.lane_candidate_sampling(ctr_line_candts, [0, 0], viz=False)
+        # NOTE[MD]: "tar" stands for "target" -- this is where we sample the centerlines (ctr_line_candts)
 
         if self.split == "test":
-            tar_candts_gt, tar_offse_gt = np.zeros((tar_candts.shape[0], 1)), np.zeros((1, 2))
             splines, ref_idx = None, None
+            tar_candts_gt, tar_offse_gt = np.zeros((tar_candts.shape[0], 1)), np.zeros((1, 2))
         else:
+            # TODO[MD]: is it OK that we know these things if the split is "val" ?
+            #  In particular, agt_traj_fut is a peek into the future, isn't it?
             splines, ref_idx = self.get_ref_centerline(ctr_line_candts, agt_traj_fut)
             tar_candts_gt, tar_offse_gt = self.get_candidate_gt(tar_candts, agt_traj_fut[-1])
 
@@ -174,7 +194,9 @@ class ArgoversePreprocessor(Preprocessor):
             # collect the future prediction ground truth
             gt_pred = np.zeros((self.pred_horizon, 2), np.float32)
             has_pred = np.zeros(self.pred_horizon, np.bool)
+
             future_mask = np.logical_and(step >= self.obs_horizon, step < self.obs_horizon + self.pred_horizon)
+
             post_step = step[future_mask] - self.obs_horizon
             post_traj = traj_nd[future_mask]
             gt_pred[post_step] = post_traj
@@ -193,6 +215,11 @@ class ArgoversePreprocessor(Preprocessor):
                     break
             step_obs = step_obs[i:]
             traj_obs = traj_obs[i:]
+
+
+            if len(step_obs) < self.obs_horizon:
+                print(f'len(step_obs) = ', len(step_obs)) 
+
 
             if len(step_obs) <= 1:
                 continue
@@ -351,7 +378,10 @@ class ArgoversePreprocessor(Preprocessor):
             return [Spline2D(x=cline_list[0][:, 0], y=cline_list[0][:, 1])], 0
         else:
             line_idx = 0
-            ref_centerlines = [Spline2D(x=cline_list[i][:, 0], y=cline_list[i][:, 1]) for i in range(len(cline_list))]
+            ref_centerlines = [
+                Spline2D(x=cline_list[i][:, 0], y=cline_list[i][:, 1])
+                for i in range(len(cline_list))
+            ]
 
             # search the closest point of the traj final position to each center line
             min_distances = []

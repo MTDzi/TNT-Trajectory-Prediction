@@ -2,7 +2,6 @@
 import math
 
 import numpy as np
-import random
 
 import torch
 import torch.nn as nn
@@ -15,8 +14,7 @@ class GlobalGraph(nn.Module):
     """
     def __init__(self, in_channels,
                  global_graph_width,
-                 num_global_layers=1,
-                 need_scale=False):
+                 num_global_layers=1):
         super(GlobalGraph, self).__init__()
         self.in_channels = in_channels
         self.global_graph_width = global_graph_width
@@ -26,17 +24,19 @@ class GlobalGraph(nn.Module):
         in_channels = self.in_channels
         for i in range(num_global_layers):
             self.layers.add_module(
-                f'glp_{i}', SelfAttentionFCLayer(in_channels,
-                                                 self.global_graph_width,
-                                                 need_scale)
+                f'glp_{i}', 
+                SelfAttentionFCLayer(in_channels, self.global_graph_width)
             )
 
             in_channels = self.global_graph_width
 
     def forward(self, x, **kwargs):
-        for name, layer in self.layers.named_modules():
-            if isinstance(layer, SelfAttentionFCLayer):
-                x = layer(x, **kwargs)
+        # for name, layer in self.layers.named_modules():
+        #     if isinstance(layer, SelfAttentionFCLayer):
+        #         x = layer(x, **kwargs)
+        # NOTE[MD]: changed the above into:
+        for layer in self.layers:
+            x = layer(x, **kwargs)
         return x
 
 
@@ -45,15 +45,13 @@ class SelfAttentionFCLayer(nn.Module):
     Self-attention layer. no scale_factor d_k
     """
 
-    def __init__(self, in_channels, global_graph_width, need_scale=False):
+    def __init__(self, in_channels, global_graph_width):
         super(SelfAttentionFCLayer, self).__init__()
         self.in_channels = in_channels
         self.graph_width = global_graph_width
         self.q_lin = nn.Linear(in_channels, global_graph_width)
         self.k_lin = nn.Linear(in_channels, global_graph_width)
         self.v_lin = nn.Linear(in_channels, global_graph_width)
-        self.scale_factor_d = 1 + \
-            int(np.sqrt(self.in_channels)) if need_scale else 1
 
     def forward(self, x, valid_lens):
         query = self.q_lin(x)
@@ -89,7 +87,3 @@ class SelfAttentionFCLayer(nn.Module):
                 mask[batch_id, cnt:] = True
             X_masked = X.masked_fill(mask, -1e12)
             return nn.functional.softmax(X_masked, dim=-1) * (1 - mask.float())
-
-
-if __name__ == "__main__":
-    pass

@@ -59,7 +59,7 @@ class GraphData(Data):
 class ArgoverseInMem(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None):
         super(ArgoverseInMem, self).__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.data, self.slices = torch.load(self.processed_paths[0])  # What is processed_paths
         gc.collect()
 
     @property
@@ -76,15 +76,23 @@ class ArgoverseInMem(InMemoryDataset):
     def process(self):
         """ transform the raw data and store in GraphData """
         # loading the raw data
-        traj_lens = []
-        valid_lens = []
+        traj_lens = []  # NOTE[MD]: number of trajectories
+        valid_lens = []  # NOTE[MD]: number of trajectories + number of lanes
         candidate_lens = []
         for raw_path in tqdm(self.raw_paths, desc="Loading Raw Data..."):
             raw_data = pd.read_pickle(raw_path)
+            # raw_data.columns :
+            # ['city', 'trajs', 'steps', 'orig', 'theta', 'rot', 'feats', 'has_obss',
+            #  'has_preds', 'gt_preds', 'tar_candts', 'gt_candts', 'gt_tar_offset',
+            #  'ref_seq_indices', 'ref_ctr_lines', 'ref_ctr_lines_s', 'ref_cetr_idx',
+            #  'graph', 'seq_id']
 
             # statistics
-            traj_num = raw_data['feats'].values[0].shape[0]
+            traj_num = raw_data['feats'].values[0].shape[0]  # same as: raw_data.shape[1]
             traj_lens.append(traj_num)
+
+            # raw_data['graph'].values[0].keys() :
+            # ['ctrs', 'num_nodes', 'feats', 'turn', 'control', 'intersect', 'lane_idcs', 'lane_seq_idcs']
 
             lane_num = raw_data['graph'].values[0]['lane_idcs'].max() + 1
             valid_lens.append(traj_num + lane_num)
@@ -157,6 +165,7 @@ class ArgoverseInMem(InMemoryDataset):
 
     @staticmethod
     def _get_x(data_seq):
+        # NOTE[MD]: this docstring is awesome
         """
         feat: [xs, ys, vec_x, vec_y, step(timestamp), traffic_control, turn, is_intersection, polyline_id];
         xs, ys: the control point of the vector, for trajectory, it's start point, for lane segment, it's the center point;
@@ -172,8 +181,8 @@ class ArgoverseInMem(InMemoryDataset):
         identifier = np.empty((0, 2))
 
         # get traj features
-        traj_feats = data_seq['feats'].values[0]
-        traj_has_obss = data_seq['has_obss'].values[0]
+        traj_feats = data_seq['feats'].values[0]  # E.g. shape = [11, 20, 3], 11 vehicles, 20 steps, 3D points
+        traj_has_obss = data_seq['has_obss'].values[0]  # shape = [11, 20]
         step = np.arange(0, traj_feats.shape[1]).reshape((-1, 1))
         traj_cnt = 0
         for _, [feat, has_obs] in enumerate(zip(traj_feats, traj_has_obss)):
@@ -184,6 +193,7 @@ class ArgoverseInMem(InMemoryDataset):
             is_turn = np.zeros((len(xy_s), 2))
             polyline_id = np.ones((len(xy_s), 1)) * traj_cnt
             feats = np.vstack([feats, np.hstack([xy_s, vec, step[has_obs][:-1], traffic_ctrl, is_turn, is_intersect, polyline_id])])
+            # print(f'feats.shape = {feats.shape}')
             traj_cnt += 1
 
         # get lane features
@@ -196,6 +206,7 @@ class ArgoverseInMem(InMemoryDataset):
         lane_idcs = graph['lane_idcs'].reshape(-1, 1) + traj_cnt
         steps = np.zeros((len(lane_idcs), 1))
         feats = np.vstack([feats, np.hstack([ctrs, vec, steps, traffic_ctrl, is_turns, is_intersect, lane_idcs])])
+        # print(f'feats.shape = {feats.shape}')
 
         # get the cluster and construct subgraph edge_index
         cluster = copy(feats[:, -1].astype(np.int64))

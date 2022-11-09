@@ -11,8 +11,8 @@ from torch_geometric.nn import DataParallel
 from argoverse.evaluation.eval_forecasting import get_displacement_errors_and_miss_rate
 from argoverse.evaluation.competition_util import generate_forecasting_h5
 
-from apex import amp
-from apex.parallel import DistributedDataParallel
+from torch.cuda import amp
+from torch.nn.parallel import DistributedDataParallel
 
 from core.trainer.trainer import Trainer
 from core.model.TNT import TNT
@@ -190,6 +190,7 @@ class TNTTrainer(Trainer):
 
             else:
                 with torch.no_grad():
+                    # NOTE[MD]: the model returns pred['traj_with_gt'] even when doing validation
                     loss, loss_dict = self.compute_loss(data)
 
                     # writing loss
@@ -198,13 +199,17 @@ class TNTTrainer(Trainer):
 
             num_sample += n_graph
             avg_loss += loss.detach().item()
+            # NOTE[MD]: torch.Tensor.item -- Returns the value of this tensor as a standard Python number
+            #  This only works for tensors with one element
 
             desc_str = "[Info: Device_{}: {}_Ep_{}: loss: {:.5e}; avg_loss: {:.5e}]".format(
                 self.cuda_id,
                 "train" if training else "eval",
                 epoch,
                 loss.detach().item() / n_graph,
-                avg_loss / num_sample)
+                avg_loss / num_sample,
+            )
+            # NEAT[MD]: huh, now would you look at that!
             data_iter.set_description(desc=desc_str, refresh=True)
 
         if training:
@@ -249,6 +254,8 @@ class TNTTrainer(Trainer):
         # horizon = self.model.horizon if not self.multi_gpu else self.model.module.horizon
         horizon = self.model.horizon
 
+        # TODO[MD]: what the heck is k and horizon ?
+
         # debug
         out_dict = {}
         out_cnt = 0
@@ -282,9 +289,11 @@ class TNTTrainer(Trainer):
                 # record the prediction and ground truth
                 for batch_id in range(batch_size):
                     seq_id = seq_ids[batch_id]
-                    forecasted_trajectories[seq_id] = [self.convert_coord(pred_y_k, origs[batch_id], rots[batch_id])
-                                                       if convert_coordinate else pred_y_k
-                                                       for pred_y_k in pred_y[batch_id]]
+                    forecasted_trajectories[seq_id] = [
+                        self.convert_coord(pred_y_k, origs[batch_id], rots[batch_id])
+                        if convert_coordinate else pred_y_k
+                        for pred_y_k in pred_y[batch_id]
+                    ]
                     gt_trajectories[seq_id] = self.convert_coord(gt[batch_id], origs[batch_id], rots[batch_id]) \
                         if convert_coordinate else gt[batch_id]
 

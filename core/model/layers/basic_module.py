@@ -9,6 +9,9 @@ import torch.nn.functional as F
 
 # MLP
 class MLP(nn.Module):
+    """
+    NOTE[MD]: An MLP with a residual connection and LayerNorms
+    """
     def __init__(self, in_channel, out_channel, hidden=64, bias=True, activation="relu", norm='layer'):
         super(MLP, self).__init__()
 

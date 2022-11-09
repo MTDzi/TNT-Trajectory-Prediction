@@ -5,11 +5,6 @@ from datetime import datetime
 import json
 import argparse
 
-# from torch.utils.data import DataLoader
-from torch_geometric.data import DataLoader
-
-# from core.dataloader.dataset import GraphDataset
-# from core.dataloader.argoverse_loader import Argoverse, GraphData
 from core.dataloader.argoverse_loader_v2 import ArgoverseInMem as ArgoverseInMemv2, GraphData
 from core.trainer.vectornet_trainer import VectorNetTrainer
 
@@ -105,7 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--num_workers", type=int, default=16,
                         help="dataloader worker size")
 
-    parser.add_argument("-c", "--with_cuda", action="store_true", default=True,
+    parser.add_argument("-c", "--with_cuda", action="store_true", default=False,
                         help="training with CUDA: true, or false")
     # parser.add_argument("-cd", "--cuda_device", type=int, nargs='+', default=[],
     #                     help="CUDA device ids")

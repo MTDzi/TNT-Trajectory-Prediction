@@ -11,7 +11,7 @@ class VectorLoss(nn.Module):
         The loss function for train vectornet, Loss = L_traj + alpha * L_node
         where L_traj is the negative Gaussian log-likelihood loss, L_node is the huber loss
     """
-    def __init__(self, alpha=1.0, aux_loss=False, reduction='sum'):
+    def __init__(self, *, alpha=1.0, aux_loss=False, reduction='sum'):
         super(VectorLoss, self).__init__()
 
         self.alpha = alpha
@@ -110,11 +110,13 @@ class TNTLoss(nn.Module):
         cls_loss = F.binary_cross_entropy(
             pred_dict['target_prob'], gt_dict['target_prob'].float(), reduction='none')
 
+        # NOTE[MD]: gt_dict['target_prob'] was boolean, when I checked, of shape (batch_size, 4410)
         gt_idx = gt_dict['target_prob'].nonzero()
         offset = pred_dict['offset'][gt_idx[:, 0], gt_idx[:, 1]]
 
         # cls_loss, indices = torch.topk(cls_loss, self.m, dim=1)    # largest 50
-        cls_loss = cls_loss.sum()
+        cls_loss = cls_loss.sum()  # TODO[MD]: why not do it above with reduction='sum'?
+
         offset_loss = F.smooth_l1_loss(offset, gt_dict['offset'], reduction='sum')
         # loss += self.lambda1 * (cls_loss + offset_loss) / (1.0 if self.reduction == "sum" else batch_size)
         loss += self.lambda1 * (cls_loss + offset_loss)
@@ -124,12 +126,17 @@ class TNTLoss(nn.Module):
         loss += self.lambda2 * reg_loss
 
         # compute scoring gt and loss
-        score_gt = F.softmax(-distance_metric(pred_dict['traj'], gt_dict['y'])/self.temper, dim=-1).detach()
+        score_gt = F.softmax(-distance_metric(pred_dict['traj'], gt_dict['y']) / self.temper, dim=-1).detach()
         # score_loss = torch.sum(torch.mul(- torch.log(pred_dict['score']), score_gt)) / batch_size
         score_loss = F.binary_cross_entropy(pred_dict['score'], score_gt, reduction='sum')
         loss += self.lambda3 * score_loss
 
-        loss_dict = {"tar_cls_loss": cls_loss, "tar_offset_loss": offset_loss, "traj_loss": reg_loss, "score_loss": score_loss}
+        loss_dict = {
+            "tar_cls_loss": cls_loss,
+            "tar_offset_loss": offset_loss,
+            "traj_loss": reg_loss,
+            "score_loss": score_loss,
+        }
         if self.aux_loss:
             if not isinstance(aux_pred, torch.Tensor) or not isinstance(aux_gt, torch.Tensor):
                 return loss, loss_dict

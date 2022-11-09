@@ -116,10 +116,11 @@ class TNT(nn.Module):
 
         target_candidate = data.candidate.view(-1, n, 2)   # [batch_size, N, 2]
         batch_size, _, _ = target_candidate.size()
-        candidate_mask = data.candidate_mask.view(-1, n)
+        candidate_mask = data.candidate_mask.view(-1, n)  # NOTE[MD]: from 5 to 10% of the targets were masked
 
         # feature encoding
-        global_feat, aux_out, aux_gt = self.backbone(data)             # [batch_size, time_step_len, global_graph_width]
+        global_feat, aux_out, aux_gt = self.backbone(data)
+        # global_feat.shape = [batch_size, time_step_len, global_graph_width]
         target_feat = global_feat[:, 0].unsqueeze(1)
 
         # predict prob. for each target candidate, and corresponding offest
@@ -128,6 +129,7 @@ class TNT(nn.Module):
         # predict the trajectory given the target gt
         target_gt = data.target_gt.view(-1, 1, 2)
         traj_with_gt = self.motion_estimator(target_feat, target_gt)
+        # traj_with_gt.shape = [batch_size, 1, 60]
 
         # predict the trajectories for the M most-likely predicted target, and the score
         _, indices = target_prob.topk(self.m, dim=1)
@@ -135,6 +137,7 @@ class TNT(nn.Module):
         target_pred_se, offset_pred_se = target_candidate[batch_idx, indices], offset[batch_idx, indices]
 
         trajs = self.motion_estimator(target_feat, target_pred_se + offset_pred_se)
+        # trajs.shape = [batch_size, self.m, 60]
 
         score = self.traj_score_layer(target_feat, trajs)
 

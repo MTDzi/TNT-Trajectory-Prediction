@@ -151,6 +151,7 @@ class Trainer(object):
         self.model.train()
         return self.iteration(epoch, self.train_loader)
 
+    @torch.inference_mode()
     def eval(self, epoch):
         gc.collect()
 
@@ -209,6 +210,7 @@ class Trainer(object):
             os.makedirs(self.save_folder, exist_ok=True)
 
         # compute the metrics and save
+        # NOTE[MD]: check out https://eval.ai/web/challenges/challenge-page/454/evaluation
         metric = self.compute_metric()
 
         # skip model saving if the minADE is not better
@@ -283,6 +285,7 @@ class Trainer(object):
         with torch.no_grad():
             for data in tqdm(self.test_loader):
                 batch_size = data.num_graphs
+                # TODO[MD]: check how the trajectory looks like before the cumulative sum
                 gt = data.y.unsqueeze(1).view(batch_size, -1, 2).cumsum(axis=1).numpy()
 
                 # inference and transform dimension

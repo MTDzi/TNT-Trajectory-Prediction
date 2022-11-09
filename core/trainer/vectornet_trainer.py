@@ -1,4 +1,5 @@
 import os
+from re import T
 from tqdm import tqdm
 
 import torch
@@ -97,7 +98,11 @@ class VectorNetTrainer(Trainer):
             with_aux=aux_loss,
             device=self.device
         )
-        self.criterion = VectorLoss(aux_loss, reduction="sum")
+        self.criterion = VectorLoss(
+            alpha=1.0,
+            aux_loss=aux_loss,
+            reduction="sum",
+        )
 
         # init optimizer
         self.optim = AdamW(self.model.parameters(), lr=self.lr, betas=self.betas, weight_decay=self.weight_decay)
@@ -137,17 +142,15 @@ class VectorNetTrainer(Trainer):
 
         data_iter = tqdm(
             enumerate(dataloader),
-            desc="{}_Ep_{}: loss: {:.5e}; avg_loss: {:.5e}".format("train" if training else "eval",
-                                                                   epoch,
-                                                                   0.0,
-                                                                   avg_loss),
+            desc="{}_Ep_{}: loss: {:.5e}; avg_loss: {:.5e}"
+                 .format("train" if training else "eval", epoch, 0.0, avg_loss),
             total=len(dataloader),
             bar_format="{l_bar}{r_bar}"
         )
 
         for i, data in data_iter:
             n_graph = data.num_graphs
-            data = data.to(self.device)
+            data = data.to(self.device, non_blocking=True)
 
             if training:
                 self.optm_schedule.zero_grad()

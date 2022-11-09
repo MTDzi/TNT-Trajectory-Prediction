@@ -53,6 +53,7 @@ def train(gpu, args):
         cuda_device=gpu,
         multi_gpu=args.multi_gpu,
         save_folder=output_dir,
+        enable_log=True,
         log_freq=args.log_freq,
         ckpt_path=args.resume_checkpoint if hasattr(args, "resume_checkpoint") and args.resume_checkpoint else None,
         model_path=args.resume_model if hasattr(args, "resume_model") and args.resume_model else None
@@ -89,7 +90,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-l", "--num_glayer", type=int, default=1,
                         help="number of global graph layers")
-    parser.add_argument("-a", "--aux_loss", action="store_true", default=True,
+    parser.add_argument("-a", "--aux_loss", action="store_true", default=False,
                         help="Training with the auxiliary recovery loss")
 
     parser.add_argument("-b", "--batch_size", type=int, default=2,
